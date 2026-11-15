@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "dsh-agent-bridge": {
+      "url": "http://127.0.0.1:17300/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:DSH_BRIDGE_SECRET}"
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+# Merge this insert into the Host's existing patch. All project values below are placeholders.
+- insert:
+    - id: dsh-agent-bridge
+      name: '@dsops/dsh-agent-bridge'
+      config:
+        host: 127.0.0.1
+        port: 17300
+        path: /mcp
+        secretFile: /home/dsops/.dsh/bridge.secret
+        workspaceAllowlist:
+          - /home/dsops/projects/your-project
+        workspaceSlugs:
+          example:
+            id: '00000000-0000-4000-8000-000000000001'
+            path: /home/dsops/projects/your-project
+            title: Example project
+        promptPerMinute: 30
+        requestsPerMinute: 240
+        followDefaultTimeoutMs: 8000
+        followMaxTimeoutMs: 30000
+        followMaxEvents: 200
+        readFileMaxBytes: 262144
+        artifactsLimit: 200
+        artifactsMaxDepth: 5
+        maxBodyBytes: 1048576

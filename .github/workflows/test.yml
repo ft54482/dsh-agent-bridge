@@ -1,0 +1,17 @@
+name: test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --test test/unit.test.js
+      - run: for file in scripts/*.sh examples/*.sh; do bash -n "$file" || exit; done
+      - run: npm pack --dry-run

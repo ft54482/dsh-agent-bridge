@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dsh-agent-bridge": {
+      "command": "/absolute/path/to/reviewed-mcp-remote",
+      "args": [
+        "http://127.0.0.1:17300/mcp",
+        "--allow-http",
+        "--header-file",
+        "/absolute/path/outside-repository/bridge-headers.conf"
+      ]
+    }
+  }
+}

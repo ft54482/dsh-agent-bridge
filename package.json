@@ -1,0 +1,40 @@
+{
+  "name": "@dsops/dsh-agent-bridge",
+  "version": "0.2.2",
+  "private": false,
+  "description": "Loopback-only Streamable HTTP MCP bridge that lets out-of-box agents drive the same DSH Web Sessions humans see",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs/",
+    "examples/",
+    "scripts/",
+    "skills/",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ft54482/dsh-agent-bridge"
+  },
+  "scripts": {
+    "test": "node --test test/unit.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

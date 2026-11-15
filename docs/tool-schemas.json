@@ -1,0 +1,478 @@
+[
+  {
+    "name": "dsh_list_sessions",
+    "description": "List DSH Web Sessions whose working directory is inside the bridge workspace allowlist. Same sessions the human sees in the DSH sidebar.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Optional absolute directory filter (must be inside the allowlist)."
+        },
+        "query": {
+          "type": "string",
+          "description": "Optional literal message-content search; results are intersected with the allowlisted sessions."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum rows, default 20."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "dsh_create_session",
+    "description": "Create a DSH Web Session in an allowlisted working directory. Resolves Host workspaceId (explicit > slug > resolveByPath(cwd)) so the session attaches into the named sidebar group instead of 未分组.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Absolute working directory; must be inside the bridge workspace allowlist. Used for allowlist checks and workspace resolution."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "Optional Host workspace id. Must own the same canonical path as cwd; otherwise BAD_REQUEST."
+        },
+        "workspaceSlug": {
+          "type": "string",
+          "description": "Optional operator-configured workspace alias from workspaceSlugs. Mapped then path-checked against cwd."
+        },
+        "title": {
+          "type": "string",
+          "description": "Optional session title."
+        },
+        "model": {
+          "description": "Optional model selection: \"provider/model\" or an object {provider, model, reasoningEffort?}.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "reasoningEffort": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "model"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "preset": {
+          "type": "string",
+          "description": "Optional agent preset name."
+        },
+        "source": {
+          "type": "string",
+          "description": "Optional provenance tag recorded by the bridge for this Session (bridge-local, not the Host origin). Default mcp; max 64 chars of [a-z0-9._-]."
+        }
+      },
+      "required": [
+        "cwd"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false
+    }
+  },
+  {
+    "name": "dsh_prompt",
+    "description": "Send a prompt to a DSH Web Session. The human sees the message and the agent's activity live in the DSH Web UI.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "description": "Prompt text (required unless images are supplied)."
+        },
+        "images": {
+          "type": "array",
+          "description": "Optional base64 images.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "mediaType": {
+                "type": "string",
+                "enum": [
+                  "image/png",
+                  "image/jpeg",
+                  "image/webp",
+                  "image/gif"
+                ]
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-encoded image bytes."
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mediaType",
+              "data"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "queue",
+            "steer"
+          ],
+          "description": "queue starts/queues a turn; steer injects into the running turn. Default queue."
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false
+    }
+  },
+  {
+    "name": "dsh_steer",
+    "description": "Redirect a RUNNING DSH Web Session: inject a message into the turn that is executing right now so the agent changes course without waiting for the next turn. Fails with BAD_REQUEST when the Session is idle; use dsh_prompt in that case.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "description": "Steering text (required unless images are supplied)."
+        },
+        "images": {
+          "type": "array",
+          "description": "Optional base64 images, same shape as dsh_prompt.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "mediaType": {
+                "type": "string",
+                "enum": [
+                  "image/png",
+                  "image/jpeg",
+                  "image/webp",
+                  "image/gif"
+                ]
+              },
+              "data": {
+                "type": "string",
+                "description": "Base64-encoded image bytes."
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mediaType",
+              "data"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false
+    }
+  },
+  {
+    "name": "dsh_update_queue",
+    "description": "Mutate one pending queue item of a DSH Web Session: edit its text, remove it, or steer it into the running turn. Read the queue item ids from dsh_get_status first.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "itemId": {
+          "type": "string",
+          "description": "Queue item id from dsh_get_status queue[].id."
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "edit",
+                "remove",
+                "steer"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "description": "Replacement text; required when kind is edit, forbidden otherwise."
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "sessionId",
+        "itemId",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false
+    }
+  },
+  {
+    "name": "dsh_cancel",
+    "description": "Cancel the active turn of a DSH Web Session without dropping its pending inbox.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "dsh_get_status",
+    "description": "Read the run state of a DSH Web Session: running/active, event cursor, queue depth, and pending input.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "dsh_get_projections",
+    "description": "Read a sequenced projection snapshot for a DSH Web Session, optionally filtered to specific projection keys.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional projection keys to return."
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "dsh_follow",
+    "description": "Follow a DSH Web Session from a sequence cursor and return durable events (including tool calls and results) within a bounded timeout.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "sinceSeq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Only return events with seq greater than this cursor."
+        },
+        "maxEvents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Maximum durable events to collect (default 50)."
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 30000,
+          "description": "Follow timeout in milliseconds (default 8000)."
+        },
+        "maxMessages": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "description": "Optional follow snapshot message budget."
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "dsh_read_workspace_file",
+    "description": "Read a text/binary file (for example a RESULT.md) using a path relative to the session cwd. Absolute paths and traversal outside the session cwd are rejected.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "description": "Session whose cwd is the base directory."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Explicit absolute base directory (alternative to sessionId)."
+        },
+        "path": {
+          "type": "string",
+          "description": "Path relative to the base directory."
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8388608,
+          "description": "Maximum bytes to read, default 262144."
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "dsh_list_artifacts",
+    "description": "List deliverable/result files under the session cwd, filtered by glob patterns (default: RESULT/markdown/json files).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "glob": {
+          "description": "Glob pattern (or array of patterns) relative to the base directory, supporting *, ? and **.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  },
+  {
+    "name": "dsh_list_workspaces",
+    "description": "List Host workspaces whose path is inside the bridge allowlist (sidebar tree JSON; read-only).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Optional: only return the workspace that owns this allowlisted path."
+        },
+        "includeSessionIds": {
+          "type": "boolean",
+          "description": "When true, include sessionIds (may be long). Default false."
+        },
+        "sessionIdLimit": {
+          "type": "integer",
+          "description": "Max sessionIds to return per workspace when includeSessionIds is true. Default 50, max 500."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true
+    }
+  }
+]
