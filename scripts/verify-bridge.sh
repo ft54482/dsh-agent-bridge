@@ -40,8 +40,8 @@ for origin,expected in [(None,401),('https://untrusted.example.com',403)]:
     assert code==expected, 'Expected HTTP '+str(expected)+', got '+str(code)
 print('No Bearer:401; non-loopback Origin:403 — OK')
 PY
-INIT="$("$ROOT/scripts/dshmcp.sh" initialize '{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"bridge-verify","version":"0.2.2"}}')"
-printf '%s' "$INIT" | python3 -c 'import json,sys;o=json.load(sys.stdin);s=o["result"]["serverInfo"];assert s["name"]=="dsh-agent-bridge" and s["version"]=="0.2.2";print("initialize: OK")'
+INIT="$("$ROOT/scripts/dshmcp.sh" initialize '{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"bridge-verify","version":"1.0.0"}}')"
+printf '%s' "$INIT" | python3 -c 'import json,re,sys;o=json.load(sys.stdin);s=o["result"]["serverInfo"];assert s["name"]=="dsh-agent-bridge" and re.fullmatch(r"\d+\.\d+\.\d+",s["version"]),"unexpected serverInfo: "+json.dumps(s);print("initialize: OK (serverInfo.version="+s["version"]+")")'
 TOOLS="$("$ROOT/scripts/dshmcp.sh" tools/list)"
 printf '%s' "$TOOLS" | python3 -c 'import json,sys;t=json.load(sys.stdin)["result"]["tools"];n={x["name"] for x in t};assert len(t)==12 and len(n)==12 and "dsh_list_workspaces" in n; c=next(x for x in t if x["name"]=="dsh_create_session")["inputSchema"];assert c["required"]==["cwd"] and "workspaceId" in c["properties"] and "workspaceSlug" in c["properties"];print("tools/list: 12, workspace schema OK")'
 echo 'VERIFY_BRIDGE PASS'

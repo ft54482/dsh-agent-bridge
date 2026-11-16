@@ -1,6 +1,6 @@
 # DeepSeek Harness Agent Bridge
 
-`@dsops/dsh-agent-bridge` **0.2.2** · MIT · Node.js ≥20
+`@dsops/dsh-agent-bridge` **0.2.3** · MIT · Node.js ≥20
 
 让其他 Agent 通过 MCP 操作 DeepSeek Harness（DSH）的同一套 **Web Session**：列工作区、建会话、派短任务、观察执行、取回交付物。人类在 Harness 侧栏实时看见这些会话。本项目仅包含自研 Cordis 插件、客户端与文档，不包含 DeepSeek 官方 Host 源码；**不是 DeepSeek 官方产品，也不代表其提供支持或背书**。
 
@@ -27,11 +27,19 @@ Cursor / Claude Desktop / other MCP Agent
 
 完整说明见 [安装](docs/install.md)。本包不是独立启动的 HTTP 服务，不要直接执行 `node lib/index.js`。
 
-1. 已有运行正常的 DSH Host、Node ≥20；确认 Host 提供 `@deepseek-ai/cordis ~4.1.0` 和 `@deepseek-ai/dsh-api-session-controller 0.2.2-rc.1`，并加载 workspaceRegistry。暂未对其他版本承诺兼容。
+1. 已有运行正常的 DSH Host、Node ≥20；确认 Host 提供 `@deepseek-ai/cordis ~4.1.0` 和 `@deepseek-ai/dsh-api-session-controller 0.2.2-rc.3`，并加载 workspaceRegistry。其他 DSH 版本未承诺兼容；经插件管理器以 bundle 安装时，声明不匹配会直接被拒，见[兼容性](#兼容性)。
 2. `npm pack`，把本包安装到该 Host 的 `plugins` 目录（见安装文档的本地 tarball 示例）。无需打包 Host 源码。
-3. 以 Host 运行身份生成 **32+ 随机字节**的独立 secret，文件权限 600、上级目录 700；不要打印、粘贴到聊天或提交它。
+3. 以 Host 运行身份生成 **32+ 随机字节**的独立 secret，文件权限 600、上级目录 700；不要打印、粘贴到聊天或提交它。Windows 上这些 POSIX 权限写法不适用，须显式设置绝对 `secretFile` 并用 `icacls` 限制，见[安装](docs/install.md)。
 4. 将 [cordis.patch.yml](examples/cordis.patch.yml) 的 `insert` 合并进 Host 配置；必须显式设置非空 `workspaceAllowlist`，可选设置 `workspaceSlugs`。示例路径、UUID 都是占位符。
-5. 在维护窗口由有权限的运维者重启 `dsh-web`，再运行 `scripts/verify-bridge.sh`。部署/重启需要自己取得相应授权；本项目整理与单测不会执行这些操作。
+5. 在维护窗口由有权限的运维者重启 `dsh-web`，再运行 `scripts/verify-bridge.sh`（需要 bash + python3）或纯 Node 的 `scripts/verify-bridge.mjs`（Windows 推荐）。部署/重启需要自己取得相应授权；本项目整理与单测不会执行这些操作。
+
+## 兼容性
+
+- 已验收组合：DSH **0.2.2-rc.3** + `@deepseek-ai/cordis ~4.1.0` + Node.js ≥20，Windows 本机 loopback。本版声明 `peerDependencies["@deepseek-ai/dsh-api-session-controller"] = "0.2.2-rc.3"`。
+- 0.2.2 中只声明 `0.2.2-rc.1` 的写法在 0.2.3 退役；不对其他 DSH 版本作兼容承诺。
+- DSH 插件管理器有硬性不兼容检查：bundle 声明的 DSH peer 与运行中的 DSH 版本不匹配时拒绝安装（`incompatible-version`）。改用 version exemption 需要运维者显式接受风险；不要为了让旧声明装上而放宽这一确认。
+- 验收事实：`initialize` → `serverInfo` 为 `dsh-agent-bridge 0.2.3`（版本取自 `package.json`，与发布号一致）；`tools/list` → 12 个唯一工具，且 12 个工具均已实跑；一个真实会话返回 `BRIDGE_E2E_OK`，projections / queue / cancel / steer 行为正常；`dsh_list_workspaces` → 3 个白名单根；`dsh_list_sessions` 有返回行；`dsh_read_workspace_file` 读取相对路径文件并拒绝 `../../../Windows/win.ini`（`ERROR FORBIDDEN_WORKSPACE: path escapes the session working directory`）；无 Bearer → 401、外来 Origin → 403；监听仅 `127.0.0.1:17300`。
+- Windows 的安装坑（目录安装变 link、bundle 内 git 依赖被拒、`not-bundle`、secret 权限命令）见[安装文档](docs/install.md)的 Windows 一节。
 
 ## 12 个工具
 
@@ -83,7 +91,8 @@ Cursor / Claude Desktop / other MCP Agent
 - 桥本身不执行 git 写操作、不重启、不部署、不记录 prompt 正文，但受它驱动的 Host Agent 可执行代码和写文件。任务书权限约束不等于操作系统隔离。
 - 默认 prompt/steer 共 30 次/分钟；所有工具共 240 次/分钟（prompt 也占总桶）。follow schema 单次 ≤30 秒、≤200 事件；不要调高生产边界。
 - Host 重启后桥层 source 丢失变成 unknown；自动标题/模型选择失败以 warnings 返回，不回滚已建会话。
-- 本次只做离线测试，未连接或部署实际 Host。发行前仍需隔离 Host 的人工兼容性验收。
+- 若 Host 关闭了 session-query 索引（例如 `openAt: "never"`），`dsh_list_sessions` 带 `query` 会返回 `session search is disabled`。这是 Host 配置限制，不是桥的缺陷：去掉 `query` 取列表再自行过滤。
+- 已在 Windows 上对 DSH 0.2.2-rc.3 完成本机 loopback 实机验收（见[兼容性](#兼容性)）；其他平台、远程 SSH 转发和既有部署仍需各自验收，离线单测不能替代实机检查。
 
 完整威胁模型见 [安全说明](docs/security.md)；漏洞报告见 [SECURITY.md](SECURITY.md)。
 

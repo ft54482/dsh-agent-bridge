@@ -63,7 +63,7 @@ def call(method, params, request_id=None):
 
 method = sys.argv[1]
 if method != 'initialize':
-    result = call('initialize', {'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'dshmcp','version':'0.2.2'}}, 0)
+    result = call('initialize', {'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'dshmcp','version':'1.0.0'}}, 0)
     if not isinstance(result, dict) or 'error' in result:
         fail('MCP initialize failed')
     call('notifications/initialized', {})
