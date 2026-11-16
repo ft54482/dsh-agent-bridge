@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { loadSecretFileSync, parseBearer, safeEqualSecret, SecretStore } from "../lib/auth.js";
-import { isLoopbackHost, normalizeConfig } from "../lib/config.js";
+import { DEFAULT_SECRET_FILE, isLoopbackHost, normalizeConfig } from "../lib/config.js";
 import { collectArtifacts, globToRegExp, isInside, matchesAnyGlob } from "../lib/paths.js";
 import {
   mapHostError,
@@ -38,7 +38,8 @@ test("normalizeConfig applies defaults and rejects unsafe values", () => {
   assert.equal(config.host, "127.0.0.1");
   assert.equal(config.port, 17300);
   assert.equal(config.path, "/mcp");
-  assert.deepEqual(config.workspaceAllowlist, ["/home/dsops/projects/your-project"]);
+  // normalizeConfig resolves entries against the platform's filesystem root.
+  assert.deepEqual(config.workspaceAllowlist, [path.resolve("/home/dsops/projects/your-project")]);
 
   assert.throws(() => normalizeConfig({ host: "0.0.0.0" }), /loopback/);
   assert.throws(() => normalizeConfig({ host: "localhost" }), /loopback/);
@@ -210,6 +211,12 @@ test("mapHostError maps namespaced Host codes onto stable bridge codes", () => {
   assert.equal(mapHostError({ code: "session/not-found" }).code, "NOT_FOUND");
   assert.equal(mapHostError({ code: "session/attachment-invalid" }).code, "BAD_REQUEST");
   assert.equal(mapHostError({ code: "gateway/bad-request" }).code, "BAD_REQUEST");
+  // Codes the 0.2.2-rc.3 Host raises for client-side refusals.
+  for (const code of ["session/agent-busy", "session/workspace-attach-failed", "session/conflict", "agent-preset/conflict"]) {
+    assert.deepEqual(mapHostError({ code }), { code: "BAD_REQUEST", remoteCode: code });
+  }
+  assert.equal(mapHostError({ code: "session/model-unavailable" }).code, "BAD_REQUEST");
+  assert.equal(mapHostError({ code: "session/migration-required" }).code, "HOST_ERROR");
   assert.equal(mapHostError(new Error("boom")).code, "HOST_ERROR");
   assert.equal(mapHostError(undefined).code, "HOST_ERROR");
 });
@@ -241,6 +248,43 @@ test("bridge exposes 12 tools including steer and update_queue", () => {
   assert.ok(names.includes("dsh_list_workspaces"));
 });
 
+test("default secret file is a real absolute path on this platform", () => {
+  const config = normalizeConfig({ workspaceAllowlist: [os.tmpdir()] });
+  assert.equal(config.secretFile, DEFAULT_SECRET_FILE);
+  assert.equal(path.isAbsolute(config.secretFile), true);
+  assert.equal(path.isAbsolute(DEFAULT_SECRET_FILE), true);
+  // Must not look like a POSIX literal resolved against a Windows drive root.
+  assert.equal(path.dirname(path.dirname(DEFAULT_SECRET_FILE)), path.resolve(os.homedir()));
+});
+
+test("dsh_list_sessions rejects an over-long query locally", async () => {
+  const { tools } = createToolsForTest();
+  const list = tools.find((tool) => tool.name === "dsh_list_sessions");
+  await assert.rejects(list.handler({ query: "x".repeat(501) }), /query exceeds 500 characters/);
+  // 500 is accepted by local validation (the Host is stubbed out of this path).
+  assert.doesNotThrow(() => list.handler({ query: "x".repeat(500), limit: 1 }).catch(() => {}));
+});
+
+test("dsh_cancel awaits a Host controller that answers asynchronously", async () => {
+  const cwd = os.tmpdir();
+  const build = (cancel) => createTools({
+    ctx: {
+      sessionController: {
+        list: async () => ({ items: [{ sessionId: "session-1", cwd, updatedAt: 1 }] }),
+        cancel
+      }
+    },
+    config: { promptPerMinute: 30, requestsPerMinute: 240, followDefaultTimeoutMs: 8000, followMaxTimeoutMs: 30000, followMaxEvents: 200, readFileMaxBytes: 262144, artifactsLimit: 200, artifactsMaxDepth: 5 },
+    roots: [cwd]
+  }).tools;
+
+  const asyncCancel = build(async () => ({ accepted: true })).find((tool) => tool.name === "dsh_cancel");
+  assert.deepEqual(await asyncCancel.handler({ sessionId: "session-1" }), { sessionId: "session-1", accepted: true });
+
+  const syncCancel = build(() => ({ accepted: false })).find((tool) => tool.name === "dsh_cancel");
+  assert.deepEqual(await syncCancel.handler({ sessionId: "session-1" }), { sessionId: "session-1", accepted: false });
+});
+
 /** Minimal Host-free factory: only the config values the tools read at build time. */
 function createToolsForTest() {
   return createTools({
@@ -263,7 +307,8 @@ test("workspaceSlugs validates shape, strings, paths, unknown fields and default
   const base = { workspaceAllowlist: ["/tmp"] };
   assert.deepEqual(normalizeConfig(base).workspaceSlugs, {});
   const entry = { id: "workspace-fixture", path: "/tmp/project", title: "Example" };
-  assert.deepEqual(normalizeConfig({ ...base, workspaceSlugs: { demo: entry } }).workspaceSlugs.demo, entry);
+  const resolvedEntry = { ...entry, path: path.resolve(entry.path) };
+  assert.deepEqual(normalizeConfig({ ...base, workspaceSlugs: { demo: entry } }).workspaceSlugs.demo, resolvedEntry);
   for (const value of [null, [], "bad", { demo: {} }, { demo: { ...entry, path: "relative" } }, { demo: { ...entry, id: "" } }, { demo: { ...entry, title: 1 } }, { demo: { ...entry, extra: true } }, { "": entry }]) {
     assert.throws(() => normalizeConfig({ ...base, workspaceSlugs: value }), /workspaceSlugs/);
   }
@@ -358,7 +403,7 @@ test("follow caps snapshot batches and rejects values beyond public schema", asy
   await assert.rejects(tool.handler({sessionId:"session-fixture",timeoutMs:30001}), isBadRequest);
 });
 
-test("local HTTP carrier checks auth, Origin, protocol and client verification scripts", async () => {
+test("local HTTP carrier checks auth, Origin, protocol and client verification scripts", async (t) => {
   const { createMcpServer } = await import("../lib/mcp.js");
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -376,9 +421,21 @@ test("local HTTP carrier checks auth, Origin, protocol and client verification s
     assert.equal((await request({Authorization:"Bearer wrong-fixture"})).status, 401);
     const response = await request({Authorization:"Bearer "+synthetic});
     assert.equal((await response.json()).result.tools.length, 12);
-    const { stdout } = await exec("bash", [new URL("../scripts/verify-bridge.sh", import.meta.url).pathname], {
-      env: { PATH: process.env.PATH, DSH_MCP_URL:url, DSH_BRIDGE_SECRET:synthetic }, timeout:15000
-    });
+    // The POSIX acceptance script needs bash. On Windows without a usable POSIX
+    // shell (or with WSL, which cannot see the Windows path) it cannot run, so
+    // skip instead of failing; scripts/verify-bridge.mjs covers that platform.
+    let stdout;
+    try {
+      ({ stdout } = await exec("bash", [new URL("../scripts/verify-bridge.sh", import.meta.url).pathname], {
+        env: { PATH: process.env.PATH, DSH_MCP_URL:url, DSH_BRIDGE_SECRET:synthetic }, timeout:15000
+      }));
+    } catch (error) {
+      if (error.code === "ENOENT" || error.code === 127) {
+        t.skip(`bash cannot run scripts/verify-bridge.sh here (code ${error.code}); use scripts/verify-bridge.mjs on Windows`);
+        return;
+      }
+      throw error;
+    }
     assert.match(stdout, /VERIFY_BRIDGE PASS/);
     assert.ok(!stdout.includes(synthetic));
   } finally {

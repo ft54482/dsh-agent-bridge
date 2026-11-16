@@ -1,4 +1,4 @@
-# 工具参考（0.2.2）
+# 工具参考（0.2.3）
 
 共12工具。下列inputSchema从本版本lib/tools.js导出，与0.2.1工具面保持一致（create的产品描述改为通用配置别名）。机器可读版见[tool-schemas.json](tool-schemas.json)，单测校验它与源码完全一致。
 

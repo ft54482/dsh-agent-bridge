@@ -11,7 +11,7 @@
         },
         "query": {
           "type": "string",
-          "description": "Optional literal message-content search; results are intersected with the allowlisted sessions."
+          "description": "Optional literal message-content search (max 500 characters; results are intersected with the allowlisted sessions)."
         },
         "limit": {
           "type": "integer",
